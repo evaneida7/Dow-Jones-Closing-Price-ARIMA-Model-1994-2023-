@@ -1,0 +1,254 @@
+# Packages
+library(ggplot2)
+library(zoo)
+library(car)
+library(forecast)
+library(tseries)
+library(lmtest)
+library(dygraphs)
+library(xts)
+library(scales)
+library(astsa)
+library(dplyr)
+library(lubridate)
+
+# ----------------------------
+# 0) Use your imported dataset
+# ----------------------------
+DJ <- Dow_Jones_Monthly
+
+# Make sure YearMonth is a proper Date (first day of each month)
+DJ$YearMonth <- as.Date(paste0(DJ$YearMonth, "-01"))
+
+# Closed price
+DJ$Close <- as.numeric(DJ$Avg_Price)   # <-- make sure numeric
+
+DJ$LogClose <- log(DJ$Close)
+
+
+# ----------------------------
+# 1) Time Series Plot (raw)
+# ----------------------------
+ggplot(data = DJ, aes(x = YearMonth, y = Close)) +
+  geom_line(color = "red", linewidth = 1) +
+  geom_point(color = "blue", pch = 16) +
+  xlab("Month") + ylab("Closed Price") +
+  ggtitle("Dow Jones Monthly Closed Price") +
+  theme_bw()
+
+
+# ----------------------------
+# 2) Box-Cox lambda check
+# ----------------------------
+summary(DJ)
+
+boxCox(DJ$Close ~ as.numeric(DJ$YearMonth),
+       lambda = seq(-2, 2, by = 0.25))
+
+
+# ----------------------------
+# 3) ACF + PACF (raw)
+# ----------------------------
+acf(DJ$Close, lag.max = 36, type = "correlation",
+    main = expression('ACF'),
+    ylab = expression('ACF, r'[k]),
+    xlab = expression('Lag, k'))
+
+pacf(DJ$Close, lag.max = 36,
+     main = expression('PACF'),
+     ylab = expression('PACF, Phi'[kk]),
+     xlab = expression('Lag, k'))
+
+
+# ----------------------------
+# 4) Nonseasonal difference (d = 1)
+# ----------------------------
+DJ$NonSDiff <- c(NA, diff(DJ$Close, 1))
+
+ggplot(data = DJ, aes(x = YearMonth, y = NonSDiff)) +
+  geom_line(color = "red", linewidth = 1) +
+  geom_point(color = "blue", pch = 16) +
+  xlab("Month") +
+  ylab("Nonseasonal Differenced Close") +
+  ggtitle("Dow Jones Monthly Closed Price (First Difference)") +
+  theme_bw()
+
+
+# ----------------------------
+# 5) ACF + PACF after differencing
+# ----------------------------
+acf(DJ$NonSDiff, lag.max = 48, type = "correlation",
+    main = expression('ACF'),
+    ylab = expression('ACF, r'[k]),
+    xlab = expression('Lag, k'),
+    na.action = na.pass)
+
+pacf(DJ$NonSDiff, lag.max = 48,
+     main = expression('PACF'),
+     ylab = expression('PACF, Phi'[kk]),
+     xlab = expression('Lag, k'),
+     na.action = na.pass)
+# ----------------------------
+# Step 6: ARIMA(p,1,q) Model Comparison for Y = Close Price
+# ----------------------------
+# (Non-seasonal models only)
+
+y <- DJ$Close
+
+m_010_y <- arima(y, order = c(0,1,0))  # Random Walk
+m_011_y <- arima(y, order = c(0,1,1))
+m_110_y <- arima(y, order = c(1,1,0))
+m_111_y <- arima(y, order = c(1,1,1))
+
+compare_y <- data.frame(
+  Model = c("ARIMA(0,1,0)", "ARIMA(0,1,1)", "ARIMA(1,1,0)", "ARIMA(1,1,1)"),
+  AIC   = c(AIC(m_010_y),   AIC(m_011_y),   AIC(m_110_y),   AIC(m_111_y)),
+  BIC   = c(BIC(m_010_y),   BIC(m_011_y),   BIC(m_110_y),   BIC(m_111_y))
+)
+
+compare_y
+
+
+# ============================================================
+# NON-SEASONAL ARIMA MODELS
+# ============================================================
+
+DJModel1 <- sarima(DJ$Close, 1,1,1)
+DJModel1
+
+DJModel2 <- sarima(DJ$Close, 2,1,1)
+DJModel2
+
+DJModel3 <- sarima(DJ$Close, 0,1,1)
+DJModel3
+
+
+# ----------------------------
+# Forecasts (NO seasonal terms)
+# IMPORTANT: sarima.for needs a ts object
+# ----------------------------
+DJ_ts <- ts(DJ$Close, frequency = 12)
+
+DJfore12 <- sarima.for(DJ_ts, n.ahead = 12, p = 0, d = 1, q = 1)
+DJfore12
+
+DJfore24 <- sarima.for(DJ_ts, n.ahead = 24, p = 0, d = 1, q = 1)
+DJfore24
+
+DJ_tslog <- ts(DJ$LogClose, frequency = 12)
+
+DJfore12 <- sarima.for(DJ_tslog, n.ahead = 12, p = 0, d = 1, q = 1)
+DJfore12
+
+DJfore24 <- sarima.for(DJ_tslog, n.ahead = 24, p = 0, d = 1, q = 1)
+DJfore24
+
+
+# ----------------------------
+# Native arima() comparisons
+# ----------------------------
+NDJModel1 <- arima(DJ$Close, order = c(0,1,0))
+summary(NDJModel1)
+BIC(NDJModel1)
+
+NDJModel2 <- arima(DJ$Close, order = c(0,1,1))
+summary(NDJModel2)
+BIC(NDJModel2)
+
+
+# ----------------------------
+# Forecasts (native)
+# ----------------------------
+forecast12 <- predict(NDJModel2, n.ahead = 12)
+forecast12
+
+forecast24 <- predict(NDJModel2, n.ahead = 24)
+forecast24
+
+
+
+
+# Log Transformation of Close Price
+# ----------------------------
+# Time Series Plot of Log(Close)
+# ----------------------------
+ggplot(data = DJ, aes(x = YearMonth, y = LogClose)) +
+  geom_line(color = "red", linewidth = 1) +
+  geom_point(color = "blue", pch = 16) +
+  xlab("Month") +
+  ylab("Log Closed Price") +
+  ggtitle("Log of Dow Jones Monthly Closed Price") +
+  theme_bw()
+# ACF of Log(Close)
+# ----------------------------
+acf(DJ$LogClose, lag.max = 36,
+    type = "correlation",
+    main = "ACF of Log Close",
+    ylab = expression('ACF, r'[k]),
+    xlab = "Lag")
+# PACF of Log(Close)
+# ----------------------------
+pacf(DJ$LogClose, lag.max = 36,
+     main = "PACF of Log Close",
+     ylab = expression('PACF, Phi'[kk]),
+     xlab = "Lag")
+# First Difference of Log(Close)
+# ----------------------------
+DJ$LogDiff <- c(NA, diff(DJ$LogClose, 1))
+# Time Series Plot of Differenced Log(Close)
+# ----------------------------
+ggplot(data = DJ, aes(x = YearMonth, y = LogDiff)) +
+  geom_line(color = "red", linewidth = 1) +
+  geom_point(color = "blue", pch = 16) +
+  xlab("Month") +
+  ylab("First Difference of Log Close") +
+  ggtitle("First Difference of Log Dow Jones Price") +
+  theme_bw()
+# ACF of Differenced Log(Close)
+# ----------------------------
+acf(DJ$LogDiff, lag.max = 36,
+    type = "correlation",
+    main = "ACF of Differenced Log Close",
+    ylab = expression('ACF, r'[k]),
+    xlab = "Lag",
+    na.action = na.pass)
+#PACF of Differenced Log(Close)
+# ----------------------------
+pacf(DJ$LogDiff, lag.max = 36,
+     main = "PACF of Differenced Log Close",
+     ylab = expression('PACF, Phi'[kk]),
+     xlab = "Lag",
+     na.action = na.pass)
+#Random Walk for Log(close) and comparison
+
+# Fit ARIMA models on Log(Close)
+y_log <- DJ$LogClose
+
+model_010 <- arima(y_log, order = c(0,1,0))
+model_011 <- arima(y_log, order = c(0,1,1))
+model_110 <- arima(y_log, order = c(1,1,0))
+model_111 <- arima(y_log, order = c(1,1,1))
+model_610 <- arima(y_log, order = c(6,1,0))
+
+comparison <- data.frame(
+  Model = c("ARIMA(0,1,0)", "ARIMA(0,1,1)", "ARIMA(1,1,0)", "ARIMA(1,1,1)", "ARIMA(6,1,0)"),
+  AIC = c(AIC(model_010), AIC(model_011), AIC(model_110), AIC(model_111), AIC(model_610)),
+  BIC = c(BIC(model_010), BIC(model_011), BIC(model_110), BIC(model_111), BIC (model_610))
+)
+
+comparison
+
+#Forecasting for the next 2 additional years 
+exp(DJfore12$pred)
+exp(DJfore24$pred)
+
+
+
+
+
+
+
+
+
+
+
