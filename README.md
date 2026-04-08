@@ -1,6 +1,9 @@
 ## 📊 Dow Jones Closing Price Forecasting (ARIMA, 1994–2023)
 This project performs a time series analysis of Dow Jones monthly closing prices (1994–2023) using ARIMA models in R. The workflow includes data cleaning, aggregation, stationarity analysis, model selection, and forecasting/predictions. 
 
+# Download Data from https://www.investing.com/indices/us-30-historical-data (January 1994-December 2023). 
+Once the data has been downloaded, use R to clean and aggregate the monthly average for each month and each variable. 
+
 ## ⚙️ Methods
 
 - Time series visualization
